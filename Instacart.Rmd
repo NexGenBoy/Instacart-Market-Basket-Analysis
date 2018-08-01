@@ -1,0 +1,255 @@
+---
+title: "Instacart"
+author: "Bharat"
+date: "26 July 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#setwd("E://instacart")
+library(data.table)
+library(dplyr)
+library(markdown)
+library(knitr)
+library(ggplot2)
+library(stringr)
+library(DT)
+```
+
+#Read in the data
+```{r}
+
+orders <-  fread("E:/instacart/orders.csv")
+products <-  fread("E:/instacart/products.csv")
+order_products <- fread('E:/instacart/order_products__train.csv')
+order_products_prior <- fread('E:/instacart/order_products__prior.csv')
+aisles <- fread('E:/instacart/aisles.csv')
+departments <- fread('E:/instacart/departments.csv')
+
+all_tables = list('orders' = orders, 'products' = products, 'order_products'= order_products,'order_products_prior'= order_products_prior,'aisles' = aisles, 'departments' = departments)
+
+```
+
+```{r}
+glimpse(orders)
+glimpse(order_products_prior)
+```
+
+
+```{r}
+two_tables = c(orders, order_products_prior)
+class(all_tables)
+class(two_tables)
+#sapply(two_tables, glimpse) it is not working as expected
+```
+
+```{r}
+#sapply(all_tables, kable(head())
+for (a in all_tables) {
+  b = kable(head(a,10))
+  print(b)
+}
+#sapply(all_tables, kable(head()))
+#lapply(all_tables, function(x) for (s in all_tables) {kable(head(s,10))})
+
+```
+
+```{r}
+sapply(all_tables, dim)
+sapply(all_tables, detach)
+#sapply(two_tables, dim)# diff between list and c()?
+
+```
+
+```{r}
+colnames(orders)
+```
+
+# We should do some recoding and convert character variables to factors
+```{r}
+for (x in all_tables){
+  print(glimpse(x))
+}
+
+orders <- orders %>% mutate( eval_set = as.factor(eval_set), order_hour_of_day = as.factor(order_hour_of_day), order_dow = as.factor(order_dow))
+products <- products %>% mutate( product_name = as.factor(product_name))
+aisles <- aisles %>% mutate(aisle = as.factor(aisle))
+departments <- departments %>% mutate(department = as.factor(department))
+
+```
+
+# When do people order (hour of the day)
+```{r}
+
+class(orders$order_hour_of_day)
+orders %>%  ggplot(aes(x= order_hour_of_day)) + geom_histogram(stat = 'count', fill = 'blue' )
+
+#aa = orders %>%  group_by(order_hour_of_day) %>% summarise(Freq_of_order_by_time = n()) %>% arrange(-Freq_of_order_by_time)
+#plot(aa) why it is not coming in ascending
+```
+
+# Day of Week
+```{r}
+class(order_dow)
+orders %>% ggplot(aes(x = order_dow)) + geom_histogram(stat = 'count' , fill = 'blue')
+```
+
+# When do they order again?
+```{r}
+fun_hist <-  function(df){
+  list_col =  colnames(df)
+  aa = list_col[sapply(list_col, function(x) is.factor(orders[,x]))]
+  for (col in aa){
+    plott = df %>% ggplot(aes_string(x = col)) + geom_histogram(stat = 'count' , fill = 'blue')
+    print(plott)
+    print(aa)
+  }
+}
+
+fun_hist(orders)
+```
+
+```{r}
+
+```
+
+
+```{r}
+kable(head(orders, 10))
+```
+
+# How many prior orders are there?
+```{r}
+#]orders %>% filter(eval_set=="prior") %>% count(order_number) %>% ggplot(aes(order_number,n)) + geom_line(color="red", size=1)+geom_point(size=2, color="red")
+orders %>% filter(eval_set=="prior") %>% group_by(order_number) %>% summarise(n = NROW(order_number)) %>%  ggplot(aes(order_number,n)) + geom_line(color = 'blue') + geom_point(size = 1)
+
+```
+
+
+#How many items do people buy in one order?
+```{r}
+order_products %>% group_by(order_id) %>% summarise( n_items = n()) %>% ggplot(aes(x=n_items))+
+  geom_histogram(stat = 'count', fill = 'blue') 
+```
+
+```{r}
+#allaa = merge(orders,order_products_prior, by = 'order_id', all = F)
+#View(all)
+```
+
+#Let's have a look which products are sold most often (top10)
+```{r}
+names(all_tables)
+View(products)
+
+freq_p = order_products %>% group_by(product_id) %>% summarise(freq_product = n())%>% arrange(-freq_product) %>% head(10)
+
+freq_p
+
+products$product_name[ products$product_id %in% freq_p$product_id ]
+
+tmp <- products %>% filter(product_id %in% freq_p$product_id)
+
+tmp
+freq_p %>% left_join(select(products,product_id,product_name), by ="product_id")
+
+```
+
+# How often do people order the same items again?
+
+```{r}
+dsd <- order_products %>% 
+  group_by(reordered) %>% 
+  summarize(count = n()) %>% mutate(proportion = count/sum(count))
+dsd
+```
+
+```{r}
+dsd %>% ggplot(aes(x= reordered, y = count,fill = as.factor(reordered))) + geom_bar(stat = 'identity')
+```
+
+#Most often reordered
+
+
+```{r}
+tmp <-order_products %>% 
+  group_by(product_id) %>% 
+  summarize(proportion_reordered = mean(reordered), n=n()) %>% 
+  filter(n>40) %>% 
+  top_n(10,wt=proportion_reordered) %>% 
+  arrange(desc(proportion_reordered)) %>% 
+  left_join(products,by="product_id")
+
+kable(tmp)
+```
+
+
+```{r}
+tmp <-order_products %>% 
+  group_by(product_id) %>% 
+  summarize(proportion_reordered = mean(reordered), n=n(), prod = proportion_reordered*n) %>% top_n(10 , wt= prod) %>%  select(-prod) %>% left_join(products, by= "product_id")
+
+tmp
+```
+
+#Which item do people put into the cart first?
+
+```{r}
+order_products %>% filter(add_to_cart_order == 1) %>% group_by( product_id) %>% summarise(countt = n()) %>% top_n(10 , wt = countt)
+```
+
+```{r}
+aa = order_products %>% group_by( product_id, add_to_cart_order) %>% summarise(countt = n()) %>% arrange(add_to_cart_order, -countt) %>% group_by(product_id) %>% 
+  mutate(total_addto =sum(countt)) %>% mutate( prop = countt / total_addto) %>% arrange(add_to_cart_order,-prop) %>% filter(countt > 10) %>% left_join(products, by = "product_id") 
+
+aa = as.data.frame(aa)
+plot_for_prop= aa %>% select(product_name, prop) %>% head(10)
+plot_for_prop
+plot_for_prop %>% ggplot(aes(x = reorder(product_name,-prop), y = prop)) + geom_bar(stat = 'identity', fill= "blue") + theme(axis.text.x=element_text(angle=90, hjust=1),axis.title.x = element_blank())+coord_cartesian(ylim=c(0.4,0.7))
+
+```
+
+#Association between time of last order and probability of reorder
+```{r}
+order_products %>% 
+  left_join(orders,by="order_id") %>% 
+  group_by(days_since_prior_order) %>%
+  summarize(mean_reorder = mean(reordered)) %>%
+  ggplot(aes(x=days_since_prior_order,y=mean_reorder))+
+  geom_bar(stat="identity",fill="red")
+
+```
+
+
+#Association between number of orders and probability of reordering
+```{r}
+order_products %>% 
+  group_by(product_id) %>% 
+  summarize(proportion_reordered = mean(reordered), n=n()) %>%
+  ggplot(aes(x=n,y=proportion_reordered))+
+  geom_point()+
+  geom_smooth(color="red")+
+  coord_cartesian(xlim=c(0,2000))
+```
+
+#Organic vs Non-organic
+```{r}
+
+products <- products %>% 
+    mutate(organic=ifelse(str_detect(str_to_lower(products$product_name),'organic'),"organic","not organic"), organic= as.factor(organic))
+    
+tmp <- order_products %>% 
+  left_join(products, by="product_id") %>% 
+  group_by(organic) %>% 
+  summarize(count = n()) %>% 
+  mutate(proportion = count/sum(count))
+kable(tmp)
+```
+
+
+
+
